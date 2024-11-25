@@ -1,25 +1,39 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
+	"log"
 	"os"
+	"strings"
 )
 
-var defaultRange = 3
+const (
+	defaultRange = 3
+)
 
 func main() {
-	fileName := "sample.png"
-	file, err := os.Open(fileName)
+	var rng = flag.Int("range", defaultRange, "range of pixel")
+	var infile = flag.String("i", "", "input file")
+	var outfile = flag.String("o", "", "output file")
+	flag.Parse()
+
+	if *infile == "" || *outfile == "" {
+		log.Fatal("input(-i) and output(-o) files are required")
+	}
+
+	file, err := os.Open(*infile)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to open input file: %v", err)
 	}
 	defer file.Close()
 
 	img, _, err := image.Decode(file)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to decode image: %v", err)
 	}
 
 	width := img.Bounds().Dx()
@@ -27,19 +41,31 @@ func main() {
 
 	resImage := image.NewRGBA(image.Rect(0, 0, width, height))
 
+	totalPx := width * height
+	var prevCompleted int = 0
 	for x := range width {
 		for y := range height {
-			resImage.SetRGBA(x, y, getDarkestColor(img, x, y, defaultRange))
+			resImage.SetRGBA(x, y, getDarkestColor(img, x, y, *rng))
+			completed := int(float32(x*height+y) / float32(totalPx) * 100.0)
+			if prevCompleted < completed {
+				fmt.Printf("\r[%-50s] %d%%", strings.Repeat("#", completed/2), completed)
+				prevCompleted = completed
+			}
 		}
 	}
 
-	resFile, err := os.Create("result.png")
+	resFile, err := os.Create(*outfile)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to create output file: %v", err)
 	}
 	defer resFile.Close()
 
-	png.Encode(resFile, resImage)
+	err = png.Encode(resFile, resImage)
+	if err != nil {
+		log.Fatalf("failed to encode image: %v", err)
+	}
+
+	fmt.Printf("\nDone.\n")
 }
 
 func getDarkestColor(img image.Image, tx, ty, rng int) color.RGBA {
